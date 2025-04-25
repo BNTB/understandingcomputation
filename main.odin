@@ -81,12 +81,11 @@ make_less_than :: proc (left, right: ^Expr) -> ^Expr
     return expr
 }
 
-make_variable :: proc (name: string, val: int) -> ^Expr
+make_variable :: proc (name: string) -> ^Expr
 {
     expr := new(Expr)
     expr.kind = .VARIABLE
     expr.name = name
-    expr.Data.Number.value = val
 
     return expr
 }
@@ -136,7 +135,7 @@ print_expr :: proc (expr: ^Expr)
             fmt.printf("%c ", expr.Data.BinOp.c)
             print_expr(expr.Data.BinOp.right)
         case .VARIABLE:
-            fmt.printf("%")
+            fmt.printf("%s ", expr.name)
     }
 }
 
@@ -172,17 +171,19 @@ reduce_expr :: proc (expr: ^Expr, env: ^map[string]int) -> ^Expr
         #partial switch expr.kind
         {
             case .ADD:
-                if is_reducible(expr.Data.BinOp.left) do return make_add(reduce_expr(expr.Data.BinOp.left, nil), expr.Data.BinOp.right)
-                else if is_reducible(expr.Data.BinOp.right) do return make_add(expr.Data.BinOp.left, reduce_expr(expr.Data.BinOp.right, nil))
+                if is_reducible(expr.Data.BinOp.left) do return make_add(reduce_expr(expr.Data.BinOp.left, env), expr.Data.BinOp.right)
+                else if is_reducible(expr.Data.BinOp.right) do return make_add(expr.Data.BinOp.left, reduce_expr(expr.Data.BinOp.right, env))
                 else do return make_number(expr.Data.BinOp.left.Data.Number.value + expr.Data.BinOp.right.Data.Number.value)
             case .MULTIPLY:
-                if is_reducible(expr.Data.BinOp.left) do return make_multiply(reduce_expr(expr.Data.BinOp.left, nil), expr.Data.BinOp.right)
-                else if is_reducible(expr.Data.BinOp.right) do return make_multiply(expr.Data.BinOp.left, reduce_expr(expr.Data.BinOp.right, nil))
+                if is_reducible(expr.Data.BinOp.left) do return make_multiply(reduce_expr(expr.Data.BinOp.left, env), expr.Data.BinOp.right)
+                else if is_reducible(expr.Data.BinOp.right) do return make_multiply(expr.Data.BinOp.left, reduce_expr(expr.Data.BinOp.right, env))
                 else do return make_number(expr.Data.BinOp.left.Data.Number.value * expr.Data.BinOp.right.Data.Number.value)
             case .LESS_THAN:
-                if is_reducible(expr.Data.BinOp.left) do return make_less_than(reduce_expr(expr.Data.BinOp.left, nil), expr.Data.BinOp.right)
-                else if is_reducible(expr.Data.BinOp.right) do return make_less_than(expr.Data.BinOp.left, reduce_expr(expr.Data.BinOp.right, nil))
+                if is_reducible(expr.Data.BinOp.left) do return make_less_than(reduce_expr(expr.Data.BinOp.left, env), expr.Data.BinOp.right)
+                else if is_reducible(expr.Data.BinOp.right) do return make_less_than(expr.Data.BinOp.left, reduce_expr(expr.Data.BinOp.right, env))
                 else do return make_number(1 if expr.Data.BinOp.left < expr.Data.BinOp.right else 0) // book uses make boolean but whatever I'm already defining bools as ints
+            case .VARIABLE:
+                return make_number(env[expr.name])
         }
     }
     return nil
@@ -190,19 +191,22 @@ reduce_expr :: proc (expr: ^Expr, env: ^map[string]int) -> ^Expr
 
 Machine :: struct
 {
-    expr: Expr
+    expr: Expr,
+    env: map[string]int
 }
 
-make_machine :: proc (expression: ^Expr) -> ^Machine
+make_machine :: proc (expression: ^Expr, env: ^map[string]int) -> ^Machine
 {
     machine := new(Machine)
     machine.expr = expression^
+    machine.env = env^
+
     return machine
 }
 
 step :: proc (machine: ^Machine)
 {
-    machine.expr = reduce_expr(&machine.expr, nil)^
+    machine.expr = reduce_expr(&machine.expr, &machine.env)^
 }
 
 run :: proc (machine: ^Machine)
@@ -210,6 +214,7 @@ run :: proc (machine: ^Machine)
     for is_reducible(&machine.expr)
     {
         print_expr(&machine.expr)
+        fmt.println()
         step(machine)
     }
     print_expr(&machine.expr)
@@ -217,13 +222,10 @@ run :: proc (machine: ^Machine)
 
 main :: proc()
 {
-    expr := make_multiply(make_add(make_number(1), make_number(2)), make_add(make_number(3), make_number(4)))
-    print_expr(expr)
-
-    newexpr : ^Expr
-
-    fmt.println()
-
-    if is_reducible(expr) do newexpr = reduce_expr(expr, nil)
-    print_expr(newexpr)
+    env := make(map[string]int)
+    expr := make_add(make_variable("x"), make_variable("y"))
+    env["x"] = 5
+    env["y"] = 2
+    machine := make_machine(expr, &env)
+    run(machine)
 }
