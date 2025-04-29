@@ -2,6 +2,9 @@ package main
 
 import "core:fmt"
 
+// maybe I use it maybe not I should have defined this before... whatever
+Env :: map[string]int
+
 ExprKind :: enum
 {
     NUMBER,
@@ -360,11 +363,87 @@ DoNothing_equality :: proc (stmnt, other_stmnt: ^Statement) -> bool
 	return false
 }
 
+evaluate_expr :: proc (expr: ^Expr, env: ^map[string]int) -> ^^Expr // could return a double pointer
+{
+	self := new(^Expr)
+	self^ = expr
+	
+	reduction := new(^Expr)
+	
+	#partial switch expr.kind 
+	{
+		case .NUMBER:
+			return self
+		case .BOOLEAN:
+			return self 
+		case .VARIABLE:
+			reduction^ = make_number(env[expr.name])
+			return reduction
+		case .ADD:
+			if expr != nil 
+			{
+				left_op := evaluate_expr(expr.Data.BinOp.left, env)	
+				right_op := evaluate_expr(expr.Data.BinOp.right, env)
+				reduction^ = make_number(left_op^.Data.Number.value + right_op^.Data.Number.value)
+			}
+			return reduction
+		case .MULTIPLY:
+			if expr != nil 
+			{
+				left_op := evaluate_expr(expr.Data.BinOp.left, env)	
+				right_op := evaluate_expr(expr.Data.BinOp.right, env)
+				reduction^ = make_number(left_op^.Data.Number.value * right_op^.Data.Number.value)
+			}
+			return reduction
+		case .LESS_THAN:
+			if expr != nil 
+			{
+				left_op := evaluate_expr(expr.Data.BinOp.left, env)	
+				right_op := evaluate_expr(expr.Data.BinOp.right, env)
+				reduction^ = make_number((int)(left_op^.Data.Number.value < right_op^.Data.Number.value))
+			}
+			return reduction
+	}
+	return nil
+}
+
+evaluate_stmnt :: proc (stmnt: ^Statement, env: ^map[string]int) -> ^map[string]int
+{
+	#partial switch stmnt.kind 
+	{
+		case .DO_NOTHING:
+			return env
+		case .ASSIGN:
+			env[stmnt.Data.BinOp.var.name] = evaluate_expr(stmnt.Data.BinOp.expr, env)^.Data.Number.value
+			return env
+		case .IF:
+			switch cond_reduction := evaluate_expr(stmnt.If.condition, env); cond_reduction^.Data.Number.value
+			{
+				case 1:
+					return evaluate_stmnt(stmnt.If.consequence, env)
+				case 0:
+					return evaluate_stmnt(stmnt.If.alternative, env)
+			}
+		case .SEQUENCE:
+			return evaluate_stmnt(stmnt.Sequence.second, evaluate_stmnt(stmnt.Sequence.first, env))
+		case .WHILE:
+			switch cond_reduction := evaluate_expr(stmnt.While.condition, env); cond_reduction^.Data.Number.value
+			{
+				case 1: 
+					return evaluate_stmnt(stmnt.While.body, evaluate_stmnt(stmnt.While.body, env))
+				case 0:
+					return env
+			}
+	}
+	return nil
+}
+
 main :: proc()
 {
     env := make(map[string]int)
 	env["x"] = 1
-    statement := make_while(make_less_than(make_variable("x"), make_number(5)), make_assign("x", make_multiply(make_variable("x"), make_number(3))))
-    machine := make_machine(statement, &env)
-    run(machine)
+    // statement := make_sequence(make_assign("x", make_add(make_number(1), make_number(1))), make_assign("y", make_add(make_variable("x"), make_number(3))))
+	statement := make_while(make_less_than(make_variable("x"), make_number(5)), make_assign("x", make_multiply(make_variable("x"), make_number(3))))
+	print_stmnt(statement)
+	print_env(evaluate_stmnt(statement, &env))
 }
